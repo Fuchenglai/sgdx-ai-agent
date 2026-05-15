@@ -25,11 +25,12 @@ spring:
       base-url: http://localhost:11434
       chat:
         model: gemma3:1b
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/sgdx_agent?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: 123456
+# 临时注释掉MySQL数据库配置，暂时不需要数据库功能
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://localhost:3306/sgdx_agent?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+#    username: root
+#    password: 123456
 # 临时注释掉，便于大家开发调试和部署（实际需要启动 MCP 服务）
 #    mcp:
 #      client:
@@ -76,11 +77,16 @@ logging:
   level:
     org.springframework.ai: DEBUG
 
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-  global-config:
-    banner: true  # 打开 MyBatis Plus 启动 banner
-    db-config:
-      id-type: auto
-  mapper-locations: classpath*:/mapper/**/*.xml
+wechat:
+  bot:
+    webhook: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=180af7c9-5213-407b-bb95-dcb891327a90
+
+# 临时注释掉MyBatis-Plus配置，暂时不需要数据库功能
+# mybatis-plus:
+#   configuration:
+#     map-underscore-to-camel-case: true
+#   global-config:
+#     banner: true  # 打开 MyBatis Plus 启动 banner
+#     db-config:
+#       id-type: auto
+#   mapper-locations: classpath*:/mapper/**/*.xml
