@@ -4,9 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.*;
-import com.sgdx.aiagent.worker.entity.CookieEntity;
-import com.sgdx.aiagent.worker.service.CookieService;
+// 临时注释掉，暂时不需要数据库功能
+// import com.sgdx.aiagent.worker.entity.CookieEntity;
+// import com.sgdx.aiagent.worker.service.CookieService;
+import com.sgdx.aiagent.worker.entity.NodeInstance;
+import com.sgdx.aiagent.worker.service.ExtractDagNodeService;
+import com.sgdx.aiagent.worker.service.WeChatBotService;
 import jakarta.annotation.PreDestroy;
+import jakarta.annotation.Resource;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,11 +20,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
@@ -49,9 +53,17 @@ public class PlaywrightManager {
     //cdap页面
     private Page cdapPage;
 
+    //数据开发页面
+    private Page analysePage;
+
 
     // 登录状态追踪（平台 -> 是否已登录）
     private final Map<String, Boolean> loginStatusMap = new ConcurrentHashMap<>();
+
+    //值班流程节点的重试次数
+    private Map<String, Integer> dutyNodeRetryTimes = new HashMap<>();
+
+    private final List<String> targetNodes = List.of();
 
     // 登录状态监听器
     private final List<Consumer<LoginStatusChange>> loginStatusListeners = new CopyOnWriteArrayList<>();
@@ -65,24 +77,32 @@ public class PlaywrightManager {
 
 
     // 默认超时时间（毫秒）
-  private static final int DEFAULT_TIMEOUT = 30000;
+    private static final int DEFAULT_TIMEOUT = 30000;
 
     // Playwright调试端口
     private static final int CDP_PORT = 7866;
 
+
     // 平台URL常量
     private static final String LIEPIN_URL = "https://www.liepin.com";
 
-    private  static final String CDAP_HOME_URL = "http://132.122.113.148:19001/atomicportal/#/home?menuId=1";
+    private static final String CDAP_HOME_URL = "http://132.122.113.148:19001/atomicportal/#/home?menuId=1";
 
     private static final String CDAP_LOGIN_URL = "http://132.122.113.148:19001/atomicportal/#/login";
 
-    private static final String CDAP_DATA_CONSOLE_URL = "https://132.121.108.31:24102/index.html?param=Y2ZLNkRNcHk2M25KNElIRXJMM1FCVzdZY3BqZXJxTVQwSzJJWHBqUUsyajJseW11NEF4M1ZTb0lRcXhQMDZNQjRqbGlsVXVHbFZzdHBLbGZpdkloSzhvY1UzYVYvYzVRODlCQWRzU3U0MUwyMDJnSDVleC96M0RqN2t6a3lwenNhd2hwaXlmZU1lam9xdmtydTBIblM2Y0lST0NiRFZHVnBFeE01YW1tR3JVL28xZGcyVi80c0VmTGhzdGtXTGJYYzhoQklsdFhrVzhtOXhjTmIrbXFyWG5Mc2wrQndmaHRHRnMvcVVydDVNWW5zYkVob01vR21kcnR4MC9xanJxNk1xVUFWQXNYM3hDdzlONzh1TGgxK3JCRFdsN1ovVERqSW1WQjh5b3N1emZxWTRIQTNVWWNFSkRONEtKdWdDbmtRWUJpUWhsMUlTYmlIVERJSjh0N3dhNFNHMGJ2Z01aSUZJbnRUTkdVOFdMYTIxamwzZ3YxcFRYZnJUbEw2cUwwYkt6ZHF4M2lOR1pYUUNqd1JTY05TcWJoR2pjcXNWVy9tYXRISndSL0xRdktkSXpIVE5WcThvNGlFZUtVR1BPK256QnZwSjVQdTJtdFNHMkNQZHdPSUxFSjVZQldBZGw0bEw4cTJiZ3V3Y2tiWlU5NEJjME5ndFlnWXBDU2dJSHg=&sign=Y2UxNDk1MGE2NDU4MTFhZjU2MmFkNGE5NGQyZmEwYTA=&homePageUrl=http://132.122.113.148:19001&userName=laifc11#/query_advance_gp";
+    private static final String CDAP_DATA_CONSOLE_URL = "https://132.121.108.31:24102/index.html?param=Y2ZLNkRNcHk2M25KNElIRXJMM1FCVzdZY3BqZXJxTVQwSzJJWHBqUUsyajJseW11NEF4M1ZTb0lRcXhQMDZNQjRqbGlsVXVHbFZzdHBLbGZpdkloSzhvY1UzYVYvYzVRODlCQWRzU3U0MUwyMDJnSDVleC96M0RqN2t6a3lwenNhd2hwaXlmZU1lam9xdmtydTBIblM2Y0lST0NiRFZHVnBFeE01YW1tR3JVL28xZGdyVy80c0VmTGhzdGtXTGJYYzhoQklsdFhrVzhtOXhjTmIrbXFyWG5Mc2wrQndmaHRHRnMvcVVydDVNWW5zYkVob01vR21kcnR4MC9xanJxNk1xVUFWQXNYM3hDdzlONzh1TGgxK3JCRFdsN1ovVERqSW1WQjh5b3N1emZxWTRIQTNVWWNFSkRONEtKdWdDbmtRWUJpUWhsMUlTYmlIVERJSjh0N3dhNFNHMGJ2Z01aSUZJbnRUTkdVOFdMYTIxamwzZ3YxcFRYZnJUbEw2cUwwYkt6ZHF4M2lOR1pYUUNqd1JTY05TcWJoR2pjcXNWVy9tYXRISndSL0xRdktkSXpIVE5WcThvNGlFZUtVR1BPK256QnZwSjVQdTJtdFNHMkNQZHdPSUxFSjVZQldBZGw0bEw4cTJiZ3V3Y2tiWlU5NEJjME5ndFlnWXBDU2dJSHg=&sign=Y2UxNDk1MGE2NDU4MTFhZjU2MmFkNGE5NGQyZmEwYTA=&homePageUrl=http://132.122.113.148:19001&userName=laifc11#/query_advance_gp";
 
     private static final String CDAP_PROCESS_MONITOR_URL = "https://132.121.108.31:24102/index.html?param=Sk5Vbmhma3VkdC9vUHN2Ty9nZWdKWStna1VKRFJNMngzY1M2bGhRVGIvSG5ob3l1dC9YWlQyZEJDV0ZlL0FhUHY0dGJyMzZVek0za2JEcjB6S2ZoeFVmYzdWU0JzRURqKytWQlFEUjdzYUk1aHUxbDF1Smt4K3NscTNOTGl1OVN3b3RnZEwrZm01STZZa1ZqQjVTdzdTVUErQVQ0MTI1NzZnd0Z0dmFvZjc4U3I1MGt2RWNSYnMzUWRyL0M4Nnp0Vm9XbGpxLzVUVHhmVDlBU1g3L2hkWktmTGw5S1FTcnFHek51T0dReExINHNpRDFQc084K2J4dHNlMTdSSDNBZFM5cjczTHYrUE9YdWsyWmdhanlyWlRMNzhGQVk3TDByYjhDUkdxcGR1WjZmNHBjTmFLY1lkRlVlOTVvcmJwQUpqZkQzMW5CYkswZWEvTTJuaktNeTBTUFY5MUZMSk9mMXdra01KV0dRbjJ5bDNPUVZicnAydC83eEt5ZzZueEV1RUJzRGphbUdGMTQ3eVVta3E2OVhKZVl0OVMwQlVaeFVpa1l2ZVBzRjQ2eHNoVENRK2srMmw5cmM2eTRFTWhNOW9sVTRHRC84OE9SaHcwRlZQZzF5VURIL3QzRGdFMmNpQnQyZ3liNlVnQXZTWmhxSC9xMHpuZjVoZkRsVXJjQjQ=&sign=YTk5YjI3OWRkOWFlMWFmMjA5MmEyMjRkZWYwMDU2YjE=&homePageUrl=http://132.122.113.148:19001&userName=laifc11#/tasks_list";
 
+    // 临时注释掉，暂时不需要数据库功能
+    // @Autowired
+    // private CookieService cookieService;
+
     @Autowired
-    private CookieService cookieService;
+    private ExtractDagNodeService extractDagNodeService;
+
+    @Resource
+    private WeChatBotService weChatBotService;
 
     /**
      * 初始化Playwright实例（延迟初始化）
@@ -103,7 +123,7 @@ public class PlaywrightManager {
             // 创建浏览器实例，使用固定CDP端口7866，最大化启动
             browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                     .setHeadless(false) // 非无头模式，可视化调试
-                    .setSlowMo(50) // 放慢操作速度，便于调试
+                    .setSlowMo(1000) // 放慢操作速度，便于调试
                     .setArgs(List.of(
                             "--remote-debugging-port=" + CDP_PORT, // 使用固定CDP端口
                             "--start-maximized", // 最大化启动窗口
@@ -122,9 +142,9 @@ public class PlaywrightManager {
             log.info("✓ BrowserContext已创建（所有平台共享）");
 
             // 顺序创建所有Page（避免并发创建Page导致的竞态条件）
-            liepinPage = context.newPage();
+            /*liepinPage = context.newPage();
             liepinPage.setDefaultTimeout(DEFAULT_TIMEOUT);
-            log.info("✓ 猎聘 Page已创建");
+            log.info("✓ 猎聘 Page已创建");*/
 
             cdapPage = context.newPage();
             cdapPage.setDefaultTimeout(DEFAULT_TIMEOUT);
@@ -132,52 +152,102 @@ public class PlaywrightManager {
 
             // 并发执行各平台的初始化逻辑（导航、Cookie加载等）
             log.info("开始并发初始化所有平台...");
-            CompletableFuture<Void> liepinFuture = CompletableFuture.runAsync(this::setupLiepinPlatform);
+            //CompletableFuture<Void> liepinFuture = CompletableFuture.runAsync(this::setupLiepinPlatform);
             CompletableFuture<Void> cdapFuture = CompletableFuture.runAsync(this::setupCdapPlatform);
 
             // 等待所有平台初始化完成
-            CompletableFuture.allOf(liepinFuture,cdapFuture).join();
-
-            System.out.println("cdap页面初始化成功，请手工完成登录操作。");
-            System.out.print("是否已完成手工登录操作？（y/n）");
-            char choice = (char) System.in.read();
-            if (choice == 'y' || choice == 'Y') {
-                //navigate2PageByText("cdap","自助分析");
-                cdapPage.locator("p.name[data-v-252ac23d]:has-text('自助分析')").click();
-                reTryProcess(List.of("高套受理时报",
-                        "值班流程",
-                        "用户销售品资料表",
-                        "用户基础资料表（日）",
-                        "CRM工号及揽装表",
-                        "人力信息表",
-                        "用户销售品模型",
-                        "省积分销售额"
-                ));
-            }
-
+            CompletableFuture.allOf(cdapFuture).join();
             log.info("✓ 浏览器自动化引擎初始化完成（所有平台已并发启动）");
             log.info("========================================");
+
+            try {
+                log.info("延迟2min后，开始第一次登录后的流程监控任务...");
+                Thread.sleep(2 * 60 * 1000);
+                cdapPage.locator("p.name[data-v-252ac23d]:has-text('自助分析')").click();
+                Thread.sleep(3 * 1000);
+                analysePage = cdapPage.waitForPopup(() -> {
+                    cdapPage.locator("p.name[data-v-6cb72f89]:has-text('地市专区')").click();
+                });
+                Thread.sleep(3 * 1000);
+                int maxRetries = 3;
+                boolean navigateSuccess = false;
+                for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        //点击查看按钮
+                        analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).click();
+                        Thread.sleep(2 * 1000);
+                        navigateSuccess = true;
+                        break;
+                    } catch (InterruptedException e) {
+                        // 记录中断事件
+                        log.error("线程被中断");
+                        // 重新设置中断状态
+                        Thread.currentThread().interrupt();
+                    } catch (PlaywrightException e) {
+                        log.error("Playwright执行,点击查看按钮出错", e);
+                        if (attempt < maxRetries) {
+                            try {
+                                Thread.sleep(2000);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    }
+                }
+                if (!navigateSuccess) {
+                    log.warn("{}页面导航失败", "analysePage");
+                }
+                reTryProcess(List.of("值班流程"));
+            } catch (Exception e) {
+                log.error("第一次登录的流程监控任务执行异常", e);
+            }
+
         } catch (Exception e) {
             log.error("✗ 浏览器自动化引擎初始化失败", e);
             throw new RuntimeException("Playwright初始化失败", e);
         }
     }
 
-    public int reTryProcess(List<String> processes)  {
-        int success=0;
+    public void hiveSqlQuery() {
         try {
-            Page analysePage = cdapPage.waitForPopup(() -> {
+            cdapPage.locator("p.name[data-v-252ac23d]:has-text('自助分析')").click();
+            Page sqlQueryPage = cdapPage.waitForPopup(() -> {
                 cdapPage.locator("p.name[data-v-6cb72f89]:has-text('地市专区')").click();
             });
-                /*Thread.sleep(3*1000);
-                analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("高级")).click();
-                Thread.sleep(1*1000);
-                analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("继续前往132.121.108.31（不安全）")).click();*/
             Thread.sleep(3 * 1000);
             //点击查看按钮
-            analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).click();
+            sqlQueryPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).click();
             Thread.sleep(2 * 1000);
-            analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("数据开发")).click();
+
+            sqlQueryPage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("仓库管理")).click();
+            sqlQueryPage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName(" 数据控制台")).click();
+            sqlQueryPage.locator(".CodeMirror-scroll").click();
+            sqlQueryPage.getByRole(AriaRole.TEXTBOX).nth(2).fill("select * from dwd_mboss_ods_serv limit 10;");
+
+
+            // 使用 waitForResponse 更加简洁
+            Response apiResponse = sqlQueryPage.waitForResponse(
+                    //todo url应该为真实路径
+                    resp -> resp.url().contains("/api/data") && resp.status() == 200,
+                    () -> {
+                        // 在这个 Runnable 中触发操作
+                        sqlQueryPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("执行").setExact(true)).click();
+                    }
+            );
+
+            // 此时已经确保响应返回，直接读取
+            String body = apiResponse.text();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("获取网络响应超时或失败", e);
+        }
+    }
+
+    public List<String> reTryProcess(List<String> processes) {
+        List<String> passProcesses = new ArrayList<>();
+        try {
+            analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("数据开发")).first().click();
             Thread.sleep(2 * 1000);
             analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("流程监控")).click();
             Thread.sleep(2 * 1000);
@@ -189,10 +259,17 @@ public class PlaywrightManager {
                 //点击搜索按钮
                 analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("")).click();
                 Thread.sleep(3 * 1000);
+
+                //如果已经有成功的流程就不再重跑
+                if (analysePage.getByText("成功 1").count() > 0 || analysePage.getByText("成功 2").count() > 0 || analysePage.getByText("成功 3").count() > 0) {
+                    log.info("流程{}成功了，不再执行失败重跑", process);
+                    passProcesses.add(process);
+
+                }
                 boolean rowVisible = analysePage.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr > .el-table_5_column_9 > .cell").first().isVisible();
 
                 if (rowVisible) {
-                    log.info("流程{}失败了，即将执行失败重跑");
+                    log.info("流程{}失败了，即将执行失败重跑", process);
                     // 1. 定位到你想要操作的那行的“操作”按钮.(这里使用第一行，如果是其他行，请使用 nth(index))
                     Locator operationBtn = analysePage
                             .getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("操作")) // 查找文本为“操作”的按钮
@@ -226,6 +303,43 @@ public class PlaywrightManager {
                             .setState(WaitForSelectorState.VISIBLE)
                             .setTimeout(5000)); // 设置一个较短的超时时间
 
+                    //通过DAG按钮判断有哪些节点失败了
+                    Locator dagItem = targetDropdownMenu.getByText("DAG").first();
+                    dagItem.waitFor(new Locator.WaitForOptions()
+                            .setState(WaitForSelectorState.VISIBLE) // 等待该项完全可见
+                            .setTimeout(5000)); // 设置一个合理的超时时间
+                    Response dagResponse = analysePage.waitForResponse(
+                            resp -> resp.url().contains("NodeInstance/QueryActive") && resp.status() == 200,
+                            () -> {
+                                // 点击DAG按钮
+                                dagItem.click();
+                            }
+                    );
+
+                    // 此时已经确保响应返回，直接读取
+                    String body = dagResponse.text();
+                    List<NodeInstance> nodes = extractDagNodeService.extractDataQuick(body);
+                    // 记录失败节点的重试次数 (SRF = 失败结束)
+                    List<NodeInstance> failNodes = nodes.stream()
+                            .filter(n -> "SRF".equals(n.getNodeState()))
+                            .toList();
+                    String content = process + "失败次数在3次及以上的节点有：";
+
+                    for (NodeInstance failNode : failNodes) {
+                        Integer times = dutyNodeRetryTimes.getOrDefault(failNode.getNodeName(), 0);
+                        if (times >= 2) {
+                            content = content + failNode.getNodeName() + ",";
+                        }
+                        dutyNodeRetryTimes.put(failNode.getNodeName(), times + 1);
+                        log.info("节点{}重试次数为：{}", failNode.getNodeName(), times + 1);
+                    }
+                    content = content + "请及时处理。";
+                    weChatBotService.sendTextMessage(content, null);
+
+                    Thread.sleep(2 * 1000);
+                    // 关闭弹出的DAG窗口
+                    analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Close")).click();
+
                     // --- 优化点3: 精确定位到“失败重跑”项，并等待其稳定 ---
                     // 使用更精确的定位器，确保找到的是下拉菜单内的“失败重跑”
                     // 通过先定位到菜单容器，再在其内部查找文本，可以避免全局污染
@@ -239,29 +353,23 @@ public class PlaywrightManager {
 
                     Thread.sleep(1 * 1000);
                     analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("确定")).click();
-                }else {
-                    log.info("流程{}没有失败，无需重跑");
-
-                    //todo 判断是否成功，如果成功success++
-                    success++;
                 }
             }
-            if (analysePage != null) {
-                analysePage.close();
-                log.info("完成一轮流程重跑任务，关闭数据分析页面");
-            }
+
             //刷新页面，以便下一次执行时不会提示重新登录
             cdapPage.reload(new Page.ReloadOptions().setTimeout(30000));
-            return success;
-        }catch (InterruptedException e) {
+            return passProcesses;
+        } catch (InterruptedException e) {
             // 记录中断事件
             log.error("线程被中断");
             // 重新设置中断状态
             Thread.currentThread().interrupt();
-            return success;
-        }catch (PlaywrightException e){
-            log.error("Playwright执行出错",e);
-            return -1;
+            return passProcesses;
+        } catch (PlaywrightException e) {
+            log.error("Playwright在执行定时任务检查流程时出错", e);
+            return passProcesses;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
 
     }
@@ -271,7 +379,7 @@ public class PlaywrightManager {
      *
      * @param page 页面实例
      */
-    private void setupLoginMonitoring(String platform, Page page,boolean monitoringPaused) {
+    private void setupLoginMonitoring(String platform, Page page, boolean monitoringPaused) {
         // 监听页面导航事件，检测URL变化
         page.onFrameNavigated(frame -> {
             if (frame == page.mainFrame()) {
@@ -289,7 +397,7 @@ public class PlaywrightManager {
                         default:
                             throw new IllegalArgumentException("不支持的平台: " + platform);
                     }
-                    log.info("{}平台导航到新页面，检查登录状态为{}", platform,loggedIn);
+                    log.info("{}平台导航到新页面，检查登录状态为{}", platform, loggedIn);
                     setLoginStatus(platform, loggedIn);
                 }
             }
@@ -299,46 +407,47 @@ public class PlaywrightManager {
     }
 
     /**
-     * 设置cdap平台（加载Cookie、导航、监控）
+     * 设置cdap平台（加载导航、监控）
      */
     private void setupCdapPlatform() {
         log.info("开始初始化cdap平台（加载导航、监控）");
 
         //导航到cdap登录页
-        navigate2PageByUrl("cdap",CDAP_LOGIN_URL);
+        navigate2PageByUrl("cdap", CDAP_LOGIN_URL);
 
 
         // 初始化登录状态并通知（如果有SSE连接会立即推送），loginStatusMap有<liepin,false>
         setLoginStatus("cdap", false);
         // 设置登录状态监控,URL变化时检查登录状态
-        setupLoginMonitoring("cdap",cdapPage,cdapMonitoringPaused);
+        setupLoginMonitoring("cdap", cdapPage, cdapMonitoringPaused);
     }
 
     /**
      * 设置猎聘平台（加载Cookie、导航、监控）
      */
     private void setupLiepinPlatform() {
-        log.info("开始初始化猎聘平台（加载Cookie、导航、监控）");
+        log.info("开始初始化猎聘平台（加载导航、监控）");
 
-        // 尝试从数据库加载猎聘平台Cookie到上下文
-        try {
-            CookieEntity cookieEntity = cookieService.getCookieByPlatform("liepin");
-            if (cookieEntity != null && cookieEntity.getCookieValue() != null && !cookieEntity.getCookieValue().isBlank()) {
-                String cookieStr = cookieEntity.getCookieValue();
-                List<Cookie> cookies = parseCookiesFromString(cookieStr);
-
-                if (!cookies.isEmpty()) {
-                    context.addCookies(cookies);
-                    log.info("已从数据库加载猎聘 Cookie并注入浏览器上下文，共 {} 条", cookies.size());
-                } else {
-                    log.warn("解析猎聘Cookie失败，未能加载任何Cookie");
-                }
-            } else {
-                log.info("数据库未找到猎聘Cookie或值为空，跳过Cookie注入");
-            }
-        } catch (Exception e) {
-            log.warn("从数据库加载猎聘Cookie失败: {}", e.getMessage());
-        }
+        // 临时注释掉，暂时不需要数据库功能（从数据库加载猎聘平台Cookie）
+        // // 尝试从数据库加载猎聘平台Cookie到上下文
+        // try {
+        //     CookieEntity cookieEntity = cookieService.getCookieByPlatform("liepin");
+        //     if (cookieEntity != null && cookieEntity.getCookieValue() != null && !cookieEntity.getCookieValue().isBlank()) {
+        //         String cookieStr = cookieEntity.getCookieValue();
+        //         List<Cookie> cookies = parseCookiesFromString(cookieStr);
+        //
+        //         if (!cookies.isEmpty()) {
+        //             context.addCookies(cookies);
+        //             log.info("已从数据库加载猎聘 Cookie并注入浏览器上下文，共 {} 条", cookies.size());
+        //         } else {
+        //             log.warn("解析猎聘Cookie失败，未能加载任何Cookie");
+        //         }
+        //     } else {
+        //         log.info("数据库未找到猎聘Cookie或值为空，跳过Cookie注入");
+        //     }
+        // } catch (Exception e) {
+        //     log.warn("从数据库加载猎聘Cookie失败: {}", e.getMessage());
+        // }
 
         // 导航到猎聘首页（带重试机制）
         navigate2PageByUrl("liepin", LIEPIN_URL);
@@ -346,11 +455,11 @@ public class PlaywrightManager {
         // 初始化登录状态并通知（如果有SSE连接会立即推送），loginStatusMap有<liepin,false>
         setLoginStatus("liepin", checkIfLiepinLoggedIn());
         // 设置登录状态监控,URL变化时检查登录状态
-        setupLoginMonitoring("liepin",liepinPage,liepinMonitoringPaused);
+        setupLoginMonitoring("liepin", liepinPage, liepinMonitoringPaused);
     }
 
-    public void navigate2PageByText(String platform,String text){
-        Page myPage=null;
+    public void navigate2PageByText(String platform, String text) {
+        Page myPage = null;
         switch (platform) {
             case "liepin":
                 myPage = liepinPage;
@@ -362,13 +471,13 @@ public class PlaywrightManager {
                 throw new IllegalArgumentException("不支持的平台: " + platform);
         }
 
-        if(myPage.getByText(text).isEnabled()){
+        if (myPage.getByText(text).isEnabled()) {
             myPage.getByText(text).first().click();
         }
     }
 
-    public void fill(String platform, String locator, String text){
-        Page myPage=null;
+    public void fill(String platform, String locator, String text) {
+        Page myPage = null;
         switch (platform) {
             case "liepin":
                 myPage = liepinPage;
@@ -380,14 +489,14 @@ public class PlaywrightManager {
                 throw new IllegalArgumentException("不支持的平台: " + platform);
         }
 
-        if(myPage.locator(locator).isEnabled()){
+        if (myPage.locator(locator).isEnabled()) {
             log.info("开始在{}平台填充文本：'{}'", platform, text);
             myPage.locator(locator).fill(text);
         }
     }
 
-    public void click(String platform, String locator){
-        Page myPage=null;
+    public void click(String platform, String locator) {
+        Page myPage = null;
         switch (platform) {
             case "liepin":
                 myPage = liepinPage;
@@ -398,15 +507,15 @@ public class PlaywrightManager {
             default:
                 throw new IllegalArgumentException("不支持的平台: " + platform);
         }
-        if(myPage.locator(locator).isEnabled()){
+        if (myPage.locator(locator).isEnabled()) {
             log.info("开始在{}平台点击元素：'{}'", platform, locator);
             myPage.locator(locator).click();
         }
     }
 
-    public void navigate2PageByUrl(String platform, String url){
+    public void navigate2PageByUrl(String platform, String url) {
 
-        Page myPage=null;
+        Page myPage = null;
         switch (platform) {
             case "liepin":
                 myPage = liepinPage;
@@ -452,7 +561,7 @@ public class PlaywrightManager {
         }
 
         if (!navigateSuccess) {
-            log.warn("{}页面导航失败",platform);
+            log.warn("{}页面导航失败", platform);
         }
     }
 
@@ -466,16 +575,23 @@ public class PlaywrightManager {
             // 先检查“登录/注册”入口是否可见，若可见则明确未登录
             try {
                 Locator loginEntry = liepinPage.locator(
-                    "#header-quick-menu-login, a[href*='login'], a[data-key='login'], button[data-key='login'], text=/登录|注册/").first();
+                        "#header-quick-menu-login, a[href*='login'], a[data-key='login'], button[data-key='login'], text=/登录|注册/").first();
                 if (loginEntry.isVisible()) {
                     log.info("检测到未登录猎聘，保持在登录页或首页等待扫码登录");
                     // 若不在登录页，则导航到登录页并尝试切换二维码
                     String currentUrl = null;
-                    try { currentUrl = liepinPage.url(); } catch (Exception ignored) {}
+                    try {
+                        currentUrl = liepinPage.url();
+                    } catch (Exception ignored) {
+                    }
                     try {
                         if (currentUrl == null || !currentUrl.contains("/login")) {
                             liepinPage.navigate("https://www.liepin.com/login");
-                            try { Thread.sleep(800); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                            try {
+                                Thread.sleep(800);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
                         }
                         // 优先点击官方切换二维码的容器
                         Locator qrSwitch = liepinPage.locator(".switch-type-mask-img-box").first();
@@ -495,7 +611,8 @@ public class PlaywrightManager {
                                         if (parentBtn.count() > 0 && parentBtn.isVisible()) {
                                             parentBtn.click();
                                         }
-                                    } catch (Exception ignored2) {}
+                                    } catch (Exception ignored2) {
+                                    }
                                 }
                                 log.info("已通过二维码按钮切换到扫码登录状态");
                             }
@@ -505,7 +622,8 @@ public class PlaywrightManager {
                     }
                     return false;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // 再检查已登录特征：用户信息容器或用户头像是否存在（无需强制可见）
             try {
@@ -513,14 +631,16 @@ public class PlaywrightManager {
                     log.debug("猎聘登录检测：存在用户信息容器，判定已登录");
                     return true;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             try {
                 if (liepinPage.locator("img.header-quick-menu-user-photo, .header-quick-menu-user-photo").count() > 0) {
                     log.debug("猎聘登录检测：存在用户头像元素，判定已登录");
                     return true;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // 兜底：若不存在登录入口且也未找到明确已登录特征，按已登录处理（避免误判）
             try {
@@ -529,7 +649,8 @@ public class PlaywrightManager {
                     log.info("猎聘登录检测：未发现登录入口，兜底判定为已登录");
                     return true;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // 默认未登录
             log.debug("猎聘登录检测：未匹配到明确特征，判定未登录");
@@ -545,6 +666,8 @@ public class PlaywrightManager {
      */
     private boolean checkIfCdapLoggedIn() {
 
+        log.info("checkIfCdapLoggedIn方法已执行");
+
         // todo: 完善登录检测逻辑
 
         try {
@@ -554,28 +677,47 @@ public class PlaywrightManager {
                         "button.login-btn, text=/登录/,text=/系统登录/").first();
                 if (loginEntry.isVisible()) {
                     log.info("检测到未登录cdap，保持在登录页");
-                    // 若不在登录页，则导航到登录页并尝试切换二维码
+                    // 若不在登录页，则导航到登录页
                     String currentUrl = null;
-                    try { currentUrl = cdapPage.url(); } catch (Exception ignored) {}
+                    try {
+                        currentUrl = cdapPage.url();
+                    } catch (Exception ignored) {
+                    }
                     try {
                         if (currentUrl == null || !currentUrl.contains("/login")) {
                             cdapPage.navigate(CDAP_LOGIN_URL);
-                            try { Thread.sleep(800); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                            try {
+                                Thread.sleep(800);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
                         }
                     } catch (Exception e) {
                         log.debug("cdap登录页引导失败: {}", e.getMessage());
                     }
                     return false;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // 再检查已登录特征：用户信息容器或用户头像是否存在（无需强制可见）
             try {
-                if (cdapPage.locator("div.el-dropdown,span.el-popover_reference").count() > 0) {
+                //todo 应该是analysePage.getByRole(AriaRole.IMG).count() > 0
+                if (cdapPage.locator("div.el-dropdown,span.el-popover_reference").count() > 0 || cdapPage.getByRole(AriaRole.IMG).count() > 0) {
                     log.debug("cdap登录检测：存在用户信息容器，判定已登录");
+
+                    //如果是第一次登录，则执行一次流程监控任务
+                    if (!loginStatusMap.containsKey("cdap") || loginStatusMap.get("cdap").equals(false)) {
+                        // 开启一个异步线程，延迟 5 秒后执行
+                       /* CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS)
+                                .execute(() -> {
+
+                                });*/
+                    }
                     return true;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // 兜底：若不存在登录入口且也未找到明确已登录特征，按已登录处理（避免误判）
             try {
@@ -584,7 +726,8 @@ public class PlaywrightManager {
                     log.info("cdap登录检测：未发现登录入口，兜底判定为已登录");
                     return true;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // 默认未登录
             log.debug("cdap登录检测：未匹配到明确特征，判定未登录");
@@ -609,24 +752,6 @@ public class PlaywrightManager {
         }
     }
 
-    /**
-     * 清理智联招聘上下文中的Cookie
-     */
-    public void clearZhilianCookies() {
-        try {
-            if (context != null) {
-                context.clearCookies();
-                log.info("已清理共享上下文中的所有Cookie");
-            } else {
-                log.warn("共享上下文不存在，无法清理Cookie");
-            }
-        } catch (Exception e) {
-            log.error("清理共享上下文Cookie失败: {}", e.getMessage(), e);
-            throw new RuntimeException("清理共享上下文Cookie失败", e);
-        }
-    }
-
-
 
     /**
      * 保存猎聘Cookie到数据库
@@ -634,35 +759,19 @@ public class PlaywrightManager {
      * @param remark 备注信息
      */
     private void saveLiepinCookiesToDatabase(String remark) {
-        try {
-            List<Cookie> cookies = context.cookies();
-            // 使用ObjectMapper序列化为JSON字符串
-            String cookieJson = new ObjectMapper().writeValueAsString(cookies);
-            boolean result = cookieService.saveOrUpdateCookie("liepin", cookieJson, remark);
-            if (result) {
-                log.info("保存猎聘Cookie成功，共 {} 条，remark={}", cookies.size(), remark);
-            }
-        } catch (Exception e) {
-            log.warn("保存猎聘Cookie失败: {}", e.getMessage());
-        }
-    }
-
-
-    /**
-     * 清理猎聘上下文中的Cookie
-     */
-    public void clearLiepinCookies() {
-        try {
-            if (context != null) {
-                context.clearCookies();
-                log.info("已清理共享上下文中的所有Cookie");
-            } else {
-                log.warn("共享上下文不存在，无法清理Cookie");
-            }
-        } catch (Exception e) {
-            log.error("清理共享上下文Cookie失败: {}", e.getMessage(), e);
-            throw new RuntimeException("清理共享上下文Cookie失败", e);
-        }
+        // 临时注释掉，暂时不需要数据库功能
+        // try {
+        //     List<Cookie> cookies = context.cookies();
+        //     // 使用ObjectMapper序列化为JSON字符串
+        //     String cookieJson = new ObjectMapper().writeValueAsString(cookies);
+        //     boolean result = cookieService.saveOrUpdateCookie("liepin", cookieJson, remark);
+        //     if (result) {
+        //         log.info("保存猎聘Cookie成功，共 {} 条，remark={}", cookies.size(), remark);
+        //     }
+        // } catch (Exception e) {
+        //     log.warn("保存猎聘Cookie失败: {}", e.getMessage());
+        // }
+        log.info("数据库功能已禁用，跳过保存猎聘Cookie到数据库");
     }
 
     /**
@@ -673,38 +782,12 @@ public class PlaywrightManager {
         log.debug("猎聘登录监控已暂停");
     }
 
-    /**
-     * 恢复猎聘页面的后台登录监控
-     */
-    public void resumeLiepinMonitoring() {
-        liepinMonitoringPaused = false;
-        log.debug("猎聘登录监控已恢复");
-    }
-
-
-    /**
-     * 清理Boss上下文中的Cookie
-     * 用于退出登录时清除浏览器上下文中的所有Cookie
-     */
-    public void clearBossCookies() {
-        try {
-            if (context != null) {
-                context.clearCookies();
-                log.info("已清理共享上下文中的所有Cookie");
-            } else {
-                log.warn("共享上下文不存在，无法清理Cookie");
-            }
-        } catch (Exception e) {
-            log.error("清理共享上下文Cookie失败: {}", e.getMessage(), e);
-            throw new RuntimeException("清理共享上下文Cookie失败", e);
-        }
-    }
 
     /**
      * 定时检查登录状态（每30秒）
      * 用于捕获通过DOM元素判断登录状态的场景（无导航也可触发）
      */
-    @Scheduled(fixedDelay = 3000*10)
+    @Scheduled(fixedDelay = 3000 * 10)
     public void scheduledLoginCheck() {
         try {
             if (liepinPage != null && !liepinMonitoringPaused) {
@@ -758,7 +841,7 @@ public class PlaywrightManager {
      * 检查Playwright是否已初始化
      */
     public boolean isInitialized() {
-        return playwright != null && browser != null ;
+        return playwright != null && browser != null;
     }
 
     /**
