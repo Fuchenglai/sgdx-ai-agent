@@ -216,7 +216,7 @@ public class PlaywrightManager {
             });
             Thread.sleep(3 * 1000);
             //点击查看按钮
-            sqlQueryPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).click();
+            sqlQueryPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).first().click();
             Thread.sleep(2 * 1000);
 
             sqlQueryPage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("仓库管理")).click();
@@ -249,7 +249,7 @@ public class PlaywrightManager {
         try {
             analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("数据开发")).first().click();
             Thread.sleep(2 * 1000);
-            analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("流程监控")).click();
+            analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("流程监控")).first().click();
             Thread.sleep(2 * 1000);
             analysePage.getByRole(AriaRole.HEADING, new Page.GetByRoleOptions().setName("失败")).click();
             Thread.sleep(4 * 1000);
@@ -264,6 +264,7 @@ public class PlaywrightManager {
                 if (analysePage.getByText("成功 1").count() > 0 || analysePage.getByText("成功 2").count() > 0 || analysePage.getByText("成功 3").count() > 0) {
                     log.info("流程{}成功了，不再执行失败重跑", process);
                     passProcesses.add(process);
+                    continue;
 
                 }
                 boolean rowVisible = analysePage.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr > .el-table_5_column_9 > .cell").first().isVisible();
@@ -290,8 +291,7 @@ public class PlaywrightManager {
                     targetDropdownMenu.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE));
 
                     // --- 优化点1: 更严格的菜单等待 ---
-                    // 等待菜单容器不仅可见，而且稳定 (没有正在进行的动画)
-                    // 这有助于确保内部的菜单项也完成了渲染和动画
+                    // 等待菜单容器不仅可见，而且稳定 (没有正在进行的动画),这有助于确保内部的菜单项也完成了渲染和动画
                     targetDropdownMenu.waitFor(new Locator.WaitForOptions()
                             .setState(WaitForSelectorState.VISIBLE) // 元素可见
                             .setTimeout(10000)); // 设置一个合理的超时时间，例如 10 秒
@@ -323,26 +323,42 @@ public class PlaywrightManager {
                     List<NodeInstance> failNodes = nodes.stream()
                             .filter(n -> "SRF".equals(n.getNodeState()))
                             .toList();
-                    String content = process + "失败次数在3次及以上的节点有：";
-
+                    List<String> threeTimesNodes = new ArrayList<>();
                     for (NodeInstance failNode : failNodes) {
-                        Integer times = dutyNodeRetryTimes.getOrDefault(failNode.getNodeName(), 0);
+                        Integer times = dutyNodeRetryTimes.getOrDefault(failNode.getNodeNameCn(), 0);
                         if (times >= 2) {
-                            content = content + failNode.getNodeName() + ",";
+                            threeTimesNodes.add(failNode.getNodeNameCn());
                         }
-                        dutyNodeRetryTimes.put(failNode.getNodeName(), times + 1);
-                        log.info("节点{}重试次数为：{}", failNode.getNodeName(), times + 1);
+                        dutyNodeRetryTimes.put(failNode.getNodeNameCn(), times + 1);
+                        log.info("节点{}重试次数为：{}", failNode.getNodeNameCn(), times + 1);
                     }
-                    content = content + "请及时处理。";
-                    weChatBotService.sendTextMessage(content, null);
+                    if (!threeTimesNodes.isEmpty()) {
+                        String s = String.join(", ", threeTimesNodes);
+                        weChatBotService.sendTextMessage(process + "失败次数在3次及以上的节点有：" + s + "。请手动进入CDAP查看并处理。", null);
+                    }
 
                     Thread.sleep(2 * 1000);
                     // 关闭弹出的DAG窗口
                     analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Close")).click();
+                    Thread.sleep(3*1000);
 
-                    // --- 优化点3: 精确定位到“失败重跑”项，并等待其稳定 ---
-                    // 使用更精确的定位器，确保找到的是下拉菜单内的“失败重跑”
-                    // 通过先定位到菜单容器，再在其内部查找文本，可以避免全局污染
+                    //如果已经有三次重试失败的节点，则不再执行失败重跑,交给人来手工处理
+                    if(!threeTimesNodes.isEmpty()) continue;
+                    // 3. 悬停触发菜单
+                    operationBtn.hover();
+                    // 4. 使用获取到的具体ID等待菜单可见
+                    targetDropdownMenu = analysePage.locator("#" + menuId); // 构造精确的选择器
+                    targetDropdownMenu.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE));
+
+                    // --- 优化点1: 更严格的菜单等待 ---
+                    targetDropdownMenu.waitFor(new Locator.WaitForOptions()
+                            .setState(WaitForSelectorState.VISIBLE) // 元素可见
+                            .setTimeout(10000)); // 设置一个合理的超时时间，例如 10 秒
+
+                    // --- 优化点2: 尝试等待菜单内部的 *任意* 子元素可见 ---
+                    targetDropdownMenu.locator("li").first().waitFor(new Locator.WaitForOptions()
+                            .setState(WaitForSelectorState.VISIBLE)
+                            .setTimeout(5000)); // 设置一个较短的超时时间
                     Locator failureRetryItem = targetDropdownMenu.getByText("失败重跑").first();
                     failureRetryItem.waitFor(new Locator.WaitForOptions()
                             .setState(WaitForSelectorState.VISIBLE) // 等待该项完全可见
@@ -350,7 +366,6 @@ public class PlaywrightManager {
 
                     // 5. 点击失败重跑按钮
                     failureRetryItem.click();
-
                     Thread.sleep(1 * 1000);
                     analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("确定")).click();
                 }
@@ -666,7 +681,6 @@ public class PlaywrightManager {
      */
     private boolean checkIfCdapLoggedIn() {
 
-        log.info("checkIfCdapLoggedIn方法已执行");
 
         // todo: 完善登录检测逻辑
 

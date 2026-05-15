@@ -43,8 +43,6 @@ public class CdapJob {
         log.info("开始执行定时任务检查流程，当前时间：{}", LocalDateTime.now());
         if (activeProcesses.isEmpty()) {
             log.info("所有流程已处理完毕，无需执行");
-            // todo 通过企微机器人发送信息
-            // 如果需要循环执行，可以在这里重置：activeProcesses = new ArrayList<>(INITIAL_PROCESSES);
             return;
         }
         List<String> res = playwrightManager.reTryProcess(activeProcesses);
