@@ -20,7 +20,7 @@ public class SpringAiAiInvoke implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        AssistantMessage assistantMessage = zhipuaiChatModel.call(new Prompt("你好，我是鱼皮"))
+        AssistantMessage assistantMessage = zhipuaiChatModel.call(new Prompt("你好，我是高套核查助手"))
                 .getResult()
                 .getOutput();
         System.out.println(assistantMessage.getText());

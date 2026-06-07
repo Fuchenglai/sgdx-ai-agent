@@ -13,15 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 恋爱大师应用文档加载器
+ * 高套核查助手应用文档加载器
  */
 @Component
 @Slf4j
-public class LoveAppDocumentLoader {
+public class GtAppDocumentLoader {
 
     private final ResourcePatternResolver resourcePatternResolver;
 
-    public LoveAppDocumentLoader(ResourcePatternResolver resourcePatternResolver) {
+    public GtAppDocumentLoader(ResourcePatternResolver resourcePatternResolver) {
         this.resourcePatternResolver = resourcePatternResolver;
     }
 

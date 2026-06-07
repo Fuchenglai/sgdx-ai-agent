@@ -14,10 +14,10 @@ import org.springframework.web.client.RestTemplate;
 // 临时注释掉，暂时不需要数据库功能
 // @MapperScan("com.sgdx.aiagent.worker.mapper")
 @EnableScheduling
-public class YuAiAgentApplication {
+public class SgdxAiAgentApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(YuAiAgentApplication.class, args);
+        SpringApplication.run(SgdxAiAgentApplication.class, args);
     }
 
     @Bean

@@ -13,10 +13,10 @@ import java.util.List;
  * 恋爱大师向量数据库配置（初始化基于内存的向量数据库 Bean）
  */
 //@Configuration
-public class LoveAppVectorStoreConfig {
+public class GtAppVectorStoreConfig {
 
     @Resource
-    private LoveAppDocumentLoader loveAppDocumentLoader;
+    private GtAppDocumentLoader gtAppDocumentLoader;
 
     @Resource
     private MyTokenTextSplitter myTokenTextSplitter;
@@ -25,10 +25,10 @@ public class LoveAppVectorStoreConfig {
     private MyKeywordEnricher myKeywordEnricher;
 
     @Bean
-    VectorStore loveAppVectorStore(EmbeddingModel dashscopeEmbeddingModel) {
+    VectorStore gtAppVectorStore(EmbeddingModel dashscopeEmbeddingModel) {
         SimpleVectorStore simpleVectorStore = SimpleVectorStore.builder(dashscopeEmbeddingModel).build();
         // 加载文档
-        List<Document> documentList = loveAppDocumentLoader.loadMarkdowns();
+        List<Document> documentList = gtAppDocumentLoader.loadMarkdowns();
         // 自主切分文档
 //        List<Document> splitDocuments = myTokenTextSplitter.splitCustomized(documentList);
         // 自动补充关键词元信息

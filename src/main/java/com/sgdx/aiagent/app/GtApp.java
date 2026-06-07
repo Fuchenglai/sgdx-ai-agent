@@ -21,21 +21,21 @@ import java.util.List;
 
 @Component
 @Slf4j
-public class LoveApp {
+public class GtApp {
 
     private final ChatClient chatClient;
 
-    private static final String SYSTEM_PROMPT = "扮演深耕恋爱心理领域的专家。开场向用户表明身份，告知用户可倾诉恋爱难题。" +
-            "围绕单身、恋爱、已婚三种状态提问：单身状态询问社交圈拓展及追求心仪对象的困扰；" +
-            "恋爱状态询问沟通、习惯差异引发的矛盾；已婚状态询问家庭责任与亲属关系处理的问题。" +
-            "引导用户详述事情经过、对方反应及自身想法，以便给出专属解决方案。";
+    private static final String SYSTEM_PROMPT = "扮演高套核查领域的专家。开场向用户表明身份，告知用户可反馈高套异常数据或者有疑问高套规则。" +
+            "围绕新入网，存量两种高套提问：新入网高套询问新入网宽带，新入网融合专线，单品专线，后付费移动单品，智家类高套，政企团购；" +
+            "存量高套询问专线升级，改套餐，强合约" +
+            "引导用户讲述是什么问题，如局向问题，积分问题，揽装人问题，高套类型问题等";
 
     /**
      * 初始化 ChatClient
      *
      * @param zhipuaiChatModel
      */
-    public LoveApp( @Qualifier("zhiPuAiChatModel") ChatModel zhipuaiChatModel) {
+    public GtApp(@Qualifier("zhiPuAiChatModel") ChatModel zhipuaiChatModel) {
 //        // 初始化基于文件的对话记忆
 //        String fileDir = System.getProperty("user.dir") + "/tmp/chat-memory";
 //        ChatMemory chatMemory = new FileBasedChatMemory(fileDir);
@@ -92,39 +92,29 @@ public class LoveApp {
                 .content();
     }
 
-    record LoveReport(String title, List<String> suggestions) {
+    record GtReport(String title, List<String> suggestions) {
 
     }
 
     /**
-     * AI 恋爱报告功能（实战结构化输出）
+     * AI 高套报告功能（实战结构化输出）
      *
      * @param message
      * @param chatId
      * @return
      */
-    public LoveReport doChatWithReport(String message, String chatId) {
-        LoveReport loveReport = chatClient
+    public GtReport doChatWithReport(String message, String chatId) {
+        GtReport gtReport = chatClient
                 .prompt()
-                .system(SYSTEM_PROMPT + "每次对话后都要生成恋爱结果，标题为{用户名}的恋爱报告，内容为建议列表")
+                .system(SYSTEM_PROMPT + "每次对话后都要生成高套结果，标题为{用户名}的高套报告，内容为建议列表")
                 .user(message)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
                 .call()
-                .entity(LoveReport.class);
-        log.info("loveReport: {}", loveReport);
-        return loveReport;
+                .entity(GtReport.class);
+        log.info("gtReport: {}", gtReport);
+        return gtReport;
     }
 
-    // AI 恋爱知识库问答功能
-
-/*    @Resource
-    private VectorStore loveAppVectorStore;*/
-
-/*    @Resource
-    private Advisor loveAppRagCloudAdvisor;*/
-
-/*    @Resource
-    private VectorStore pgVectorVectorStore;*/
 
     @Resource
     private QueryRewriter queryRewriter;
@@ -147,16 +137,16 @@ public class LoveApp {
                 // 开启日志，便于观察效果
                 .advisors(new MyLoggerAdvisor())
                 // 应用 RAG 知识库问答
-//                .advisors(new QuestionAnswerAdvisor(loveAppVectorStore))
+//                .advisors(new QuestionAnswerAdvisor(gtAppVectorStore))
                 // 应用 RAG 检索增强服务（基于云知识库服务）
-//                .advisors(loveAppRagCloudAdvisor)
+//                .advisors(gtAppRagCloudAdvisor)
                 // 应用 RAG 检索增强服务（基于 PgVector 向量存储）
 //                .advisors(new QuestionAnswerAdvisor(pgVectorVectorStore))
                 // 应用自定义的 RAG 检索增强服务（文档查询器 + 上下文增强器）
 //                .advisors(
-//                        LoveAppRagCustomAdvisorFactory.createLoveAppRagCustomAdvisor(
-//                                loveAppVectorStore, "单身"
-//                        )
+//                        gtAppRagCustomAdvisorFactory.createGtAppRagCustomAdvisor(
+////                                gtAppVectorStore, "存量"
+////                        )
 //                )
                 .call()
                 .chatResponse();
@@ -169,52 +159,10 @@ public class LoveApp {
     @Resource
     private ToolCallback[] allTools;
 
-    /**
-     * AI 恋爱报告功能（支持调用工具）
-     *
-     * @param message
-     * @param chatId
-     * @return
-     */
-    public String doChatWithTools(String message, String chatId) {
-        ChatResponse chatResponse = chatClient
-                .prompt()
-                .user(message)
-                .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
-                // 开启日志，便于观察效果
-                .advisors(new MyLoggerAdvisor())
-                .toolCallbacks(allTools)
-                .call()
-                .chatResponse();
-        String content = chatResponse.getResult().getOutput().getText();
-        log.info("content: {}", content);
-        return content;
-    }
 
     // AI 调用 MCP 服务
 
     @Resource
     private ToolCallbackProvider toolCallbackProvider;
 
-    /**
-     * AI 恋爱报告功能（调用 MCP 服务）
-     *
-     * @param message
-     * @param chatId
-     * @return
-     */
-    public String doChatWithMcp(String message, String chatId) {
-        ChatResponse chatResponse = chatClient
-                .prompt()
-                .user(message)
-                .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
-                // 开启日志，便于观察效果
-                .advisors(new MyLoggerAdvisor())
-                .toolCallbacks(toolCallbackProvider)
-                .call()
-                .chatResponse();
-        String content = chatResponse.getResult().getOutput().getText();
-        log.info("content: {}", content);
-        return content;
-    }
 }

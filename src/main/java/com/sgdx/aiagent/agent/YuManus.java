@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 /**
- * 鱼皮的 AI 超级智能体（拥有自主规划能力，可以直接使用）
+ *  AI 超级智能体（拥有自主规划能力，可以直接使用）
  */
 @Component
 public class YuManus extends ToolCallAgent {

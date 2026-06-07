@@ -16,17 +16,17 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 @Slf4j
-public class LoveAppRagCloudAdvisorConfig {
+public class GtAppRagCloudAdvisorConfig {
 
     @Value("${spring.ai.zhipuai.api-key}")
     private String dashScopeApiKey;
 
     @Bean
-    public Advisor loveAppRagCloudAdvisor() {
+    public Advisor gtAppRagCloudAdvisor() {
         DashScopeApi dashScopeApi = DashScopeApi.builder()
                 .apiKey(dashScopeApiKey)
                 .build();
-        final String KNOWLEDGE_INDEX = "恋爱大师";
+        final String KNOWLEDGE_INDEX = "高套核查助手";
         DocumentRetriever dashScopeDocumentRetriever = new DashScopeDocumentRetriever(dashScopeApi,
                 DashScopeDocumentRetrieverOptions.builder()
                         .withIndexName(KNOWLEDGE_INDEX)
