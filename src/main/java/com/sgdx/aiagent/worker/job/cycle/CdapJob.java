@@ -26,13 +26,13 @@ public class CdapJob {
 
     // 初始待监控列表（不可变，作为数据源）
     private static final List<String> INITIAL_PROCESSES = List.of(
-            "值班流程",
             "用户销售品资料表",
             "用户基础资料表（日）",
             "CRM工号及揽装表",
             "人力信息表",
             "用户销售品模型",
-            "省积分销售额"
+            "省积分销售额",
+            "值班流程"
     );
 
     // 实际运行中的可变列表（每次执行后会被修改）

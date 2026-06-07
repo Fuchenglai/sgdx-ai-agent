@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -71,6 +72,8 @@ public class PlaywrightManager {
 
     // 控制是否暂停对liepinPage的后台监控
     private volatile boolean liepinMonitoringPaused = false;
+
+    AtomicBoolean isTokenExpired = new AtomicBoolean(false);
 
     // 控制是否暂停对cdapPage的后台监控
     private volatile boolean cdapMonitoringPaused = false;
@@ -163,10 +166,10 @@ public class PlaywrightManager {
             try {
                 log.info("延迟2min后，开始第一次登录后的流程监控任务...");
                 Thread.sleep(2 * 60 * 1000);
-                cdapPage.locator("p.name[data-v-252ac23d]:has-text('自助分析')").click();
+                cdapPage.locator("#leftWrap").getByText("自助分析").click();
                 Thread.sleep(3 * 1000);
                 analysePage = cdapPage.waitForPopup(() -> {
-                    cdapPage.locator("p.name[data-v-6cb72f89]:has-text('地市专区')").click();
+                    cdapPage.getByRole(AriaRole.LISTITEM, new Page.GetByRoleOptions().setName("地市专区")).click();
                 });
                 Thread.sleep(3 * 1000);
                 int maxRetries = 3;
@@ -174,7 +177,7 @@ public class PlaywrightManager {
                 for (int attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         //点击查看按钮
-                        analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).click();
+                        analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).first().click();
                         Thread.sleep(2 * 1000);
                         navigateSuccess = true;
                         break;
@@ -197,7 +200,13 @@ public class PlaywrightManager {
                 if (!navigateSuccess) {
                     log.warn("{}页面导航失败", "analysePage");
                 }
-                reTryProcess(List.of("值班流程"));
+                reTryProcess(List.of("用户销售品资料表",
+                        "用户基础资料表（日）",
+                        "CRM工号及揽装表",
+                        "人力信息表",
+                        "用户销售品模型",
+                        "省积分销售额",
+                        "值班流程"));
             } catch (Exception e) {
                 log.error("第一次登录的流程监控任务执行异常", e);
             }
@@ -210,9 +219,9 @@ public class PlaywrightManager {
 
     public void hiveSqlQuery() {
         try {
-            cdapPage.locator("p.name[data-v-252ac23d]:has-text('自助分析')").click();
+            cdapPage.locator("#leftWrap").getByText("自助分析").click();
             Page sqlQueryPage = cdapPage.waitForPopup(() -> {
-                cdapPage.locator("p.name[data-v-6cb72f89]:has-text('地市专区')").click();
+                cdapPage.getByRole(AriaRole.LISTITEM, new Page.GetByRoleOptions().setName("地市专区")).click();
             });
             Thread.sleep(3 * 1000);
             //点击查看按钮
@@ -247,7 +256,74 @@ public class PlaywrightManager {
     public List<String> reTryProcess(List<String> processes) {
         List<String> passProcesses = new ArrayList<>();
         try {
+            //再次确定analysePage存在
+            if (analysePage == null || analysePage.isClosed()) {
+                Thread.sleep(2 * 60 * 1000);
+                cdapPage.locator("#leftWrap").getByText("自助分析").click();
+                Thread.sleep(3 * 1000);
+                analysePage = cdapPage.waitForPopup(() -> {
+                    cdapPage.getByRole(AriaRole.LISTITEM, new Page.GetByRoleOptions().setName("地市专区")).getByRole(AriaRole.PARAGRAPH).click();
+                });
+                Thread.sleep(3 * 1000);
+                int maxRetries = 3;
+                boolean navigateSuccess = false;
+                for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        //点击查看按钮
+                        analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("查看")).first().click();
+                        Thread.sleep(2 * 1000);
+                        navigateSuccess = true;
+                        break;
+                    } catch (InterruptedException e) {
+                        // 记录中断事件
+                        log.error("线程被中断");
+                        // 重新设置中断状态
+                        Thread.currentThread().interrupt();
+                    } catch (PlaywrightException e) {
+                        log.error("Playwright执行,点击查看按钮出错", e);
+                        if (attempt < maxRetries) {
+                            try {
+                                Thread.sleep(2000);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    }
+                }
+                if (!navigateSuccess) {
+                    log.warn("{}页面导航失败", "analysePage");
+                }
+            }
+
+            // 1. 将监听逻辑赋值给一个 Consumer<Dialog> 变量
+            Consumer<Dialog> dialogListener = dialog -> {
+                if (dialog.message().contains("刷新token失败,即将退出:当前用户未登录")) {
+                    isTokenExpired.set(true);
+                    log.info("检测到Token失效弹窗！");
+
+                    weChatBotService.sendTextMessage("cdap平台登录失效，请再次手动登录", null);
+
+                    // 点击确定，触发页面关闭
+                    dialog.accept();
+                } else {
+                    // 处理预期外弹窗，防止污染
+                    System.err.println("出现预期外弹窗: " + dialog.message());
+                    dialog.dismiss();
+                }
+            };
+            // 2. 注册监听器（传入变量）
+            analysePage.onDialog(dialogListener);
+
+            //执行周期性操作（关键操作 ）
             analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("数据开发")).first().click();
+
+            // 5. 【关键】操作结束后，务必移除监听器，防止污染后续用例
+            analysePage.offDialog(dialogListener);
+            if (isTokenExpired.get()) {
+                isTokenExpired.set(false);
+                return passProcesses;
+            }
+
             Thread.sleep(2 * 1000);
             analysePage.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("流程监控")).first().click();
             Thread.sleep(2 * 1000);
@@ -266,6 +342,12 @@ public class PlaywrightManager {
                     passProcesses.add(process);
                     continue;
 
+                }
+
+                //如果有正在运行的流程不再重跑
+                if (analysePage.getByText("正在运行 1").count() > 0 || analysePage.getByText("正在运行 2").count() > 0 || analysePage.getByText("正在运行 3").count() > 0) {
+                    log.info("流程{}正在运行了，本次定时任务不执行失败重跑", process);
+                    continue;
                 }
                 boolean rowVisible = analysePage.locator(".el-table__fixed-body-wrapper > .el-table__body > tbody > tr > .el-table_5_column_9 > .cell").first().isVisible();
 
@@ -340,10 +422,10 @@ public class PlaywrightManager {
                     Thread.sleep(2 * 1000);
                     // 关闭弹出的DAG窗口
                     analysePage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Close")).click();
-                    Thread.sleep(3*1000);
+                    Thread.sleep(3 * 1000);
 
                     //如果已经有三次重试失败的节点，则不再执行失败重跑,交给人来手工处理
-                    if(!threeTimesNodes.isEmpty()) continue;
+                    if (!threeTimesNodes.isEmpty()) continue;
                     // 3. 悬停触发菜单
                     operationBtn.hover();
                     // 4. 使用获取到的具体ID等待菜单可见
@@ -681,7 +763,6 @@ public class PlaywrightManager {
      */
     private boolean checkIfCdapLoggedIn() {
 
-
         // todo: 完善登录检测逻辑
 
         try {
@@ -690,6 +771,7 @@ public class PlaywrightManager {
                 Locator loginEntry = cdapPage.locator(
                         "button.login-btn, text=/登录/,text=/系统登录/").first();
                 if (loginEntry.isVisible()) {
+                    weChatBotService.sendTextMessage("cdap未登录，可能是超时登录时效。请手动检查", null);
                     log.info("检测到未登录cdap，保持在登录页");
                     // 若不在登录页，则导航到登录页
                     String currentUrl = null;
