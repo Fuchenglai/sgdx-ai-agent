@@ -30,7 +30,7 @@
     </div>
     
     <div class="footer-bottom">
-      <p>© {{ currentYear }} 韶关电信1业支智能体应用平台 - 让AI为你服务</p>
+      <p>© {{ currentYear }} 韶关电信业支智能体应用平台 - 让AI为你服务</p>
     </div>
   </footer>
 </template>

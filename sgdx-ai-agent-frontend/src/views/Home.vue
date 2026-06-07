@@ -9,7 +9,7 @@
     </div>
     
     <div class="apps-container">
-      <div class="app-card" @click="navigateTo('/love-master')">
+      <div class="app-card" @click="navigateTo('/gt-master')">
         <div class="card-glow"></div>
         <div class="app-icon love-icon">🔍</div>
         <div class="app-info">

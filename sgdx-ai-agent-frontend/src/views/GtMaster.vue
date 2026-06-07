@@ -11,7 +11,7 @@
         <ChatRoom 
           :messages="messages" 
           :connection-status="connectionStatus"
-          ai-type="love"
+          ai-type="gt"
           @send-message="sendMessage"
         />
       </div>
@@ -29,7 +29,7 @@ import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
-import { chatWithLoveApp } from '../api'
+import { chatWithGtApp } from '../api'
 
 // 设置页面标题和元数据
 useHead({
@@ -54,7 +54,7 @@ let eventSource = null
 
 // 生成随机会话ID
 const generateChatId = () => {
-  return 'love_' + Math.random().toString(36).substring(2, 10)
+  return 'gt_' + Math.random().toString(36).substring(2, 10)
 }
 
 // 添加消息到列表
@@ -80,7 +80,7 @@ const sendMessage = (message) => {
   addMessage('', false)
   
   connectionStatus.value = 'connecting'
-  eventSource = chatWithLoveApp(message, chatId.value)
+  eventSource = chatWithGtApp(message, chatId.value)
   
   // 监听SSE消息
   eventSource.onmessage = (event) => {

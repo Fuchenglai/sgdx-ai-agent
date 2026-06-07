@@ -6,17 +6,17 @@ const routes = [
     name: 'Home',
     component: () => import('../views/Home.vue'),
     meta: {
-      title: '首页 - 鱼皮AI超级智能体应用平台',
-      description: '鱼皮AI超级智能体应用平台提供AI恋爱大师和AI超级智能体服务，满足您的各种AI对话需求'
+      title: '首页 - 韶关电信超级智能体应用平台',
+      description: '韶关电信超级智能体应用平台提供AI高套助手和AI超级智能体服务，满足您的各种AI对话需求'
     }
   },
   {
-    path: '/love-master',
-    name: 'LoveMaster',
-    component: () => import('../views/LoveMaster.vue'),
+    path: '/gt-master',
+    name: 'GtMaster',
+    component: () => import('../views/GtMaster.vue'),
     meta: {
-      title: 'AI恋爱大师 - 鱼皮AI超级智能体应用平台',
-      description: 'AI恋爱大师是鱼皮AI超级智能体应用平台的专业情感顾问，帮你解答各种恋爱问题，提供情感建议'
+      title: 'AI高套大师 - 韶关电信超级智能体应用平台',
+      description: 'AI高套大师是韶关电信超级智能体应用平台的高套异常数据核查助手，帮你解答各种高套问题，提供精准建议和解决方案'
     }
   },
   {
@@ -24,8 +24,8 @@ const routes = [
     name: 'SuperAgent',
     component: () => import('../views/SuperAgent.vue'),
     meta: {
-      title: 'AI超级智能体 - 鱼皮AI超级智能体应用平台',
-      description: 'AI超级智能体是鱼皮AI超级智能体应用平台的全能助手，能解答各类专业问题，提供精准建议和解决方案'
+      title: 'AI超级智能体 - 韶关电信超级智能体应用平台',
+      description: 'AI超级智能体是韶关电信超级智能体应用平台的全能助手，能解答各类专业问题，提供精准建议和解决方案'
     }
   }
 ]

@@ -79,8 +79,8 @@ const messagesContainer = ref(null)
 // 根据AI类型选择不同头像
 const aiAvatar = computed(() => {
   return props.aiType === 'love' 
-    ? '/ai-love-avatar.png'  // 恋爱大师头像
-    : '/ai-super-avatar.png' // 超级智能体头像
+    ? '/ai-love-avatar.png'
+    : '/ai-super-avatar.png'
 })
 
 // 发送消息
