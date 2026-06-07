@@ -1,0 +1,24 @@
+启动playwright实时记录的命令：
+mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="codegen --ignore-https-errors http://132.122.113.148:19001/atomicportal/#/login"
+
+
+      page1.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("操作 ")).first().click();
+      page1.locator("#dropdown-menu-8464").getByText("失败重跑").click();
+      page1.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("确定")).click();
+      page1.getByRole(AriaRole.HEADING, new Page.GetByRoleOptions().setName("成功")).click();
+      page1.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName("仓库管理")).click();
+      page1.getByRole(AriaRole.LINK, new Page.GetByRoleOptions().setName(" 数据控制台")).click();
+      page1.locator(".CodeMirror-scroll").click();
+      page1.getByRole(AriaRole.TEXTBOX).nth(2).fill("select * from dwd_mboss_ods_serv limit 10;");
+      page1.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("执行").setExact(true)).click();
+
+      page.getByText("系统登录").click();
+      page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("登录")).click();
+      page2.getByRole(AriaRole.IMG).click();
+      page2.getByText("成功 2").click();
+
+//关闭DAG
+page1.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Close")).click();
+
+
+韶关专区-IT及业务支持中心-韶关专区项目
